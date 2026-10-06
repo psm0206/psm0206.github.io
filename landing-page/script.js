@@ -263,4 +263,91 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+
+  /* ========================================================================
+     9. GA4 SECTION VIEW & CTA CLICK MEASUREMENT
+     ======================================================================== */
+  if (!window.__landingPageAnalyticsInitialized) {
+    window.__landingPageAnalyticsInitialized = true;
+
+    const trackedSections = new Set();
+    const sectionTargets = [
+      { element: document.getElementById('hero-title'), sectionName: 'hero' },
+      { element: document.getElementById('detail-space-title'), sectionName: 'detail' },
+      { element: document.getElementById('purchase-title'), sectionName: 'cta' }
+    ].filter(({ element }) => element);
+
+    function sendAnalyticsEvent(eventName, parameters) {
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', eventName, parameters);
+      }
+    }
+
+    function getHeaderOffset() {
+      const header = document.getElementById('header');
+      return header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+    }
+
+    function isHalfVisibleBelowHeader(element) {
+      const rect = element.getBoundingClientRect();
+      if (rect.height <= 0) return false;
+
+      const viewportTop = getHeaderOffset();
+      const visibleTop = Math.max(rect.top, viewportTop);
+      const visibleBottom = Math.min(rect.bottom, window.innerHeight);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      return visibleHeight / rect.height >= 0.5;
+    }
+
+    function trackSectionIfVisible(target) {
+      if (
+        document.visibilityState !== 'visible' ||
+        trackedSections.has(target.sectionName) ||
+        !isHalfVisibleBelowHeader(target.element)
+      ) {
+        return;
+      }
+
+      trackedSections.add(target.sectionName);
+      sendAnalyticsEvent('section_view', { section_name: target.sectionName });
+    }
+
+    const sectionViewObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          const target = sectionTargets.find(({ element }) => element === entry.target);
+          if (target) trackSectionIfVisible(target);
+        }
+      });
+    }, {
+      root: null,
+      rootMargin: `-${getHeaderOffset()}px 0px 0px 0px`,
+      threshold: [0.5]
+    });
+
+    sectionTargets.forEach(({ element }) => sectionViewObserver.observe(element));
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        sectionTargets.forEach(trackSectionIfVisible);
+      }
+    });
+
+    window.addEventListener('pageshow', () => {
+      sectionTargets.forEach(trackSectionIfVisible);
+    });
+
+    const ctaElements = new Set([
+      ...document.querySelectorAll('#cta-hero, [data-cta-location="hero"]'),
+      ...document.querySelectorAll('#cta-final, [data-cta-location="final"]')
+    ]);
+
+    ctaElements.forEach((cta) => {
+      const location = cta.matches('#cta-hero, [data-cta-location="hero"]') ? 'hero' : 'final';
+      cta.addEventListener('click', () => {
+        sendAnalyticsEvent('cta_click', { button_location: location });
+      });
+    });
+  }
+
 });
